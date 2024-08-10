@@ -8,6 +8,9 @@ import { EcrCdkStack } from '../lib/ecr-cdk-stack';
 
 const app = new cdk.App();
 const ecrCdkStack = new EcrCdkStack(app, 'ecr-stack', {});
+const prodCdkStack = new AppCdkStack(app, 'prod', {
+  ecrRepository: ecrCdkStack.repository,
+});
 
 //const testCdkStack = new AppCdkStack(app, 'test', {});
 
@@ -19,6 +22,7 @@ const testCdkStack = new AppCdkStack(app, 'test', {
 const pipelineCdkStack = new MyPipelineStack(app, 'MyPipelineStack', {
     ecrRepository: ecrCdkStack.repository,
     fargateServiceTest: testCdkStack.fargateService,
+    fargateServiceProd: prodCdkStack.fargateService,
   });
 
 

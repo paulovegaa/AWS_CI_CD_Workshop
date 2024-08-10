@@ -16,6 +16,7 @@ import { Construct } from 'constructs';
 interface ConsumerProps extends StackProps {
   ecrRepository: ecr.Repository,
   fargateServiceTest: ecsPatterns.ApplicationLoadBalancedFargateService,
+  fargateServiceProd: ecsPatterns.ApplicationLoadBalancedFargateService,
 }
 
 export class MyPipelineStack extends cdk.Stack {
@@ -159,9 +160,25 @@ export class MyPipelineStack extends cdk.Stack {
       ]
     });
 
+    pipeline.addStage({
+      stageName: 'Deploy-Production',
+      actions: [
+        new codepipeline_actions.ManualApprovalAction({
+          actionName: 'Approve-Deploy-Prod',
+          runOrder: 1,
+        }),
+        new codepipeline_actions.EcsDeployAction({
+          actionName: 'Deploy-Fargate-Prod',
+          service: props.fargateServiceProd.service,
+          input: dockerBuildOutput,
+          runOrder: 2,
+        }),
+      ],
+    });
+
 
     // Agrega la etapa de construcción
-    pipeline.addStage({
+    /*pipeline.addStage({
       stageName: 'Build',
       actions: [
         new codepipeline_actions.CodeBuildAction({
@@ -171,6 +188,6 @@ export class MyPipelineStack extends cdk.Stack {
           outputs: [buildOutput],
         }),
       ],
-    });
+    });*/
   }
 }
