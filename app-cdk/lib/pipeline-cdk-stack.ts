@@ -8,6 +8,8 @@ import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
+import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
 
 
@@ -16,6 +18,9 @@ import { Construct } from 'constructs';
 interface ConsumerProps extends StackProps {
   ecrRepository: ecr.Repository,
   fargateServiceTest: ecsPatterns.ApplicationLoadBalancedFargateService,
+  //fargateServiceProd: ecsPatterns.ApplicationLoadBalancedFargateService,
+  greenTargetGroup: elbv2.ApplicationTargetGroup,
+  greenLoadBalancerListener: elbv2.ApplicationListener,
   fargateServiceProd: ecsPatterns.ApplicationLoadBalancedFargateService,
 }
 
@@ -160,6 +165,38 @@ export class MyPipelineStack extends cdk.Stack {
       ]
     });
 
+    const ecsCodeDeployApp = new codedeploy.EcsApplication(this, "my-app", { applicationName: 'my-app' });
+
+    const prodEcsDeploymentGroup = new codedeploy.EcsDeploymentGroup(this, "my-app-dg", {
+      service: props.fargateServiceProd.service,
+      blueGreenDeploymentConfig: {
+        blueTargetGroup: props.fargateServiceProd.targetGroup,
+        greenTargetGroup: props.greenTargetGroup,
+        listener: props.fargateServiceProd.listener,
+        testListener: props.greenLoadBalancerListener
+      },
+      deploymentConfig: codedeploy.EcsDeploymentConfig.LINEAR_10PERCENT_EVERY_1MINUTES,
+      application: ecsCodeDeployApp,
+    });
+
+    pipeline.addStage({
+      stageName: 'Deploy-Production',
+      actions: [
+        new codepipeline_actions.ManualApprovalAction({
+          actionName: 'Approve-Prod-Deploy',
+          runOrder: 1
+        }),
+        new codepipeline_actions.CodeDeployEcsDeployAction({
+          actionName: 'BlueGreen-deployECS',
+          deploymentGroup: prodEcsDeploymentGroup,
+          appSpecTemplateInput: sourceOutput,
+          taskDefinitionTemplateInput: sourceOutput,
+          runOrder: 2
+        })
+      ]
+    });
+
+    /*
     pipeline.addStage({
       stageName: 'Deploy-Production',
       actions: [
@@ -174,7 +211,7 @@ export class MyPipelineStack extends cdk.Stack {
           runOrder: 2,
         }),
       ],
-    });
+    }); */
 
 
     // Agrega la etapa de construcción

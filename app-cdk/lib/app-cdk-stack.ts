@@ -5,6 +5,7 @@ import { Stack, StackProps, Duration } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
@@ -16,6 +17,8 @@ export class AppCdkStack extends Stack {
 
   public readonly repository: ecr.Repository;
   public readonly fargateService: ecsPatterns.ApplicationLoadBalancedFargateService;
+  public readonly greenTargetGroup: elbv2.ApplicationTargetGroup;
+  public readonly greenLoadBalancerListener: elbv2.ApplicationListener;
 
   constructor(scope: Construct, id: string, props: ConsumerProps) {
     super(scope, `${id}-app-stack`, props);
@@ -26,6 +29,7 @@ export class AppCdkStack extends Stack {
       vpc: vpc
     });
 
+    /*
     this.fargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(
       this,
       `${id}-FargateService`,
@@ -42,20 +46,86 @@ export class AppCdkStack extends Stack {
         },
       }
     );
+    */
 
 
-    this.fargateService.targetGroup.configureHealthCheck({
-      healthyThresholdCount: 2,
-      unhealthyThresholdCount: 2,
-      timeout: Duration.seconds(10),
-      interval:Duration.seconds(11),
-      path: "/my-app",
-    });
+    if (`${id}` == 'prod'){
+      //Prod service definition
+      this.fargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, `${id}-FargateService`, {
+        cluster: cluster,
+        publicLoadBalancer: true,
+        memoryLimitMiB: 1024,
+        cpu: 512,
+        desiredCount: 1,
+        taskImageOptions: {
+          image: ecs.ContainerImage.fromEcrRepository(props.ecrRepository),
+          containerName: 'my-app',
+          containerPort: 8081
+        },
+        deploymentController: {
+          type: ecs.DeploymentControllerType.CODE_DEPLOY
+        }
+      });
 
-    this.fargateService.targetGroup.setAttribute(
-      'deregistration_delay.timeout_seconds',
-      '5',
-    );
+
+      this.greenLoadBalancerListener = this.fargateService.loadBalancer.addListener(`${id}-GreenLoadBalancerListener`, { port: 81, protocol: elbv2.ApplicationProtocol.HTTP });
+      this.greenTargetGroup = new elbv2.ApplicationTargetGroup(this, `${id}-GreenTargetGroup`, {
+        port: 80,
+        targetType: elbv2.TargetType.IP,
+        vpc: vpc
+      });
+      this.greenLoadBalancerListener.addTargetGroups(`${id}-GreenListener`, {
+        targetGroups: [this.greenTargetGroup]
+      });
+      this.greenTargetGroup.configureHealthCheck(
+        {
+          timeout: Duration.seconds(10),
+          unhealthyThresholdCount: 2,
+          healthyThresholdCount: 2,
+          interval: Duration.seconds(11),
+          path: "/my-app",
+        }
+      );
+
+    } else {
+        //Test service definition
+        this.fargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(
+          this,
+          `${id}-FargateService`,
+          {
+            cluster: cluster,
+            publicLoadBalancer: true,
+            memoryLimitMiB: 1024,
+            cpu: 512,
+            desiredCount: 1,
+            taskImageOptions: {
+              image: ecs.ContainerImage.fromEcrRepository(props.ecrRepository),
+              containerName: 'my-app',
+              containerPort: 8081,
+            },
+          }
+        );
+
+        this.fargateService.targetGroup.configureHealthCheck({
+          healthyThresholdCount: 2,
+          unhealthyThresholdCount: 2,
+          timeout: Duration.seconds(10),
+          interval:Duration.seconds(11),
+          path: "/my-app",
+        });
+    
+        this.fargateService.targetGroup.setAttribute(
+          'deregistration_delay.timeout_seconds',
+          '5',
+        );
+    }
+
+
 
   }
+
+  
+
+
+
 }
