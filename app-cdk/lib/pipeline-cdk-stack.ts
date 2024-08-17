@@ -347,7 +347,7 @@ export class MyPipelineStack extends cdk.Stack {
       code: lambda.Code.fromAsset('lib/'),
       handler: 'index.lambda_handler',
       environment: {
-        SLACK_WEBHOOK_URL: 'https://hooks.slack.com/services/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',
+        SLACK_WEBHOOK_URL: 'https://hooks.slack.com/services/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',
       },
     });
 
