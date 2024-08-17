@@ -17,6 +17,8 @@ import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import { Rule, EventPattern } from 'aws-cdk-lib/aws-events';
 import * as events from 'aws-cdk-lib/aws-events';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as cloudWatch from 'aws-cdk-lib/aws-cloudwatch-actions';
 
 
 
@@ -339,6 +341,45 @@ export class MyPipelineStack extends cdk.Stack {
     pipelineFailureRule.addTarget(new targets.SnsTopic(failureTopic, {
       message: events.RuleTargetInput.fromText(`Pipeline Failure Detected! Pipeline: ${events.EventField.fromPath('$.detail.pipeline')}, Execution ID: ${events.EventField.fromPath('$.detail.execution-id')}`),
     }));
+
+    const alarmToSlackLambda = new lambda.Function(this, 'AlarmToSlackLambda', {
+      runtime: lambda.Runtime.PYTHON_3_8,
+      code: lambda.Code.fromAsset('lib/'),
+      handler: 'index.lambda_handler',
+      environment: {
+        SLACK_WEBHOOK_URL: 'https://hooks.slack.com/services/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',
+      },
+    });
+
+    //creamos la alarma en cloudwatch
+    const alarm = new cloudwatch.Alarm(this,'Alarm', {
+      alarmName: 'MyAlarm',
+      metric: new cloudwatch.Metric({
+        namespace: "AWS/CodeBuild",
+        metricName: "QueuedDuration",
+        statistic: 'avg',
+        label: 'Duration'
+      }),
+      threshold: 100,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1
+      
+    });
+
+    // creamos el topico en sns
+    const topic = new sns.Topic(this, 'CloudWatchAlarmTopic');
+
+    // al topico creado le añadimos la suscripcion al slack creado previamente
+    topic.addSubscription(new subscriptions.LambdaSubscription(alarmToSlackLambda));
+   
+    // a la alarma de cloudWatch añadimos el topico con la suscripcion incluida en el
+    alarm.addAlarmAction(new cloudWatch.SnsAction(topic));
+   
+    // Optional - Add the AlarmName as output to reference later during testing
+    new CfnOutput(this, "AlarmName", {
+      value: alarm.alarmName
+    });
+  
 
 
     /*
